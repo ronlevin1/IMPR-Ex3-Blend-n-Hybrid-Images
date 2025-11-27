@@ -181,101 +181,116 @@ def pyramid_blending(imgA_path, imgB_path, output_path,
 "------------------------------------------------------------------------------"
 
 
-def gaussian_kernel(radius):
-    """Return a 1D separable kernel based on discrete binomial coefficients."""
-    if radius <= 0:
-        return np.array([1], dtype=np.int64)
-    size = int(2 * np.ceil(3 * radius) + 1)
-    if size < 1:
-        size = 1
-    coeff = np.array([1], dtype=np.int64)
-    for _ in range(size - 1):
-        coeff = np.convolve(coeff, np.array([1, 1], dtype=np.int64))
-    return coeff / coeff.sum()
-
-
-def hybrid_image(imgA_path, imgB_path, output_path,
-                 low_pass_radius, high_pass_radius):
+def gaussian_kernel(sigma_high, sigma_low):
     """
-    Create a hybrid image by combining the low-frequency content of imgA
-    with the high-frequency content of imgB.
+    Create Gaussian kernels for high-pass and low-pass filtering.
     """
-    imgA = load_image(imgA_path, as_gray=True)
-    imgB = load_image(imgB_path, as_gray=True)
+    ksize = int(6 * sigma_low) | 1
+    x = np.arange(ksize) - ksize // 2
+    g_low = np.exp(-(x ** 2) / (2 * sigma_low ** 2))
+    g_low /= g_low.sum()
 
-    # Ensure both images have 3 channels
-    if imgA.ndim == 2:
-        imgA = np.stack([imgA] * 3, axis=-1)
-    if imgB.ndim == 2:
-        imgB = np.stack([imgB] * 3, axis=-1)
+    ksize = int(6 * sigma_high) | 1
+    x = np.arange(ksize) - ksize // 2
+    g_high = np.exp(-(x ** 2) / (2 * sigma_high ** 2))
+    g_high /= g_high.sum()
+    return g_high, g_low
 
-    # Resize imgB to match imgA's size
-    target_h, target_w = imgA.shape[:2]
-    if imgB.shape[0] != target_h or imgB.shape[1] != target_w:
-        imgB = cv2.resize(imgB, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
 
-    kernelA = gaussian_kernel(high_pass_radius)
-    blurredA = blur(imgA, kernelA)
-    high_pass_A = imgA - blurredA
+def hybrid_image(imgA_path, imgB_path, output_path, gray_scale=False):
+    """
+    Create a hybrid image from imgA and imgB.
+    """
+    # constants
+    LOW_SIGMA_RATIO = 0.02
+    HIGH_SIGMA_RATIO = 0.005
 
-    kernelB = gaussian_kernel(low_pass_radius)
-    low_pass_B = blur(imgB, kernelB)
+    # load images (color)
+    if gray_scale:
+        A = cv2.imread(imgA_path, cv2.IMREAD_GRAYSCALE) / 255.0
+        B = cv2.imread(imgB_path, cv2.IMREAD_GRAYSCALE) / 255.0
+    else:
+        A = load_image(imgA_path)
+        B = load_image(imgB_path)
 
-    hybrid_img = np.clip(low_pass_B + high_pass_A, 0.0, 1.0)
-    # hybrid_img = low_pass_B + high_pass_A
+    # match images size
+    hA, wA = A.shape[:2]
+    hB, wB = B.shape[:2]
+    target_h = min(hA, hB)
+    target_w = min(wA, wB)
+    A = cv2.resize(A, (target_w, target_h), interpolation=cv2.INTER_AREA)
+    B = cv2.resize(B, (target_w, target_h), interpolation=cv2.INTER_AREA)
 
+    # calculate sigmas & kernels
+    base = min(target_h, target_w)
+    sigma_low = LOW_SIGMA_RATIO * base
+    sigma_high = HIGH_SIGMA_RATIO * base
+    g_high, g_low = gaussian_kernel(sigma_high, sigma_low)
+
+    # create hybrid image
+    low_B = blur(B, g_low)
+    blurred_A = blur(A, g_high)
+    high_A = A - blurred_A
+
+    hybrid = low_B + high_A
+    hybrid = np.clip(hybrid, 0, 1)
+
+    # display and save
     plt.figure(figsize=(8, 8))
-    plt.imshow(hybrid_img)
+    plt.imshow(hybrid, cmap='gray')
     plt.axis('off')
     plt.show()
-    plt.imsave(output_path, hybrid_img)
+    plt.imsave(output_path, hybrid, cmap='gray')
 
-    return hybrid_img
+    return hybrid
 
 
-"------------------------------------------------------------------------------"
-
+"-----------------------------------------------------------------------------"
+"------------------------------ Main Execution -------------------------------"
+"-----------------------------------------------------------------------------"
 if __name__ == '__main__':
+    # TODO: integrate face_align module to align images before blending
+
     imgA_path = 'images/buzzi-vs-eyal/buzzi.jpeg'
     imgB_path = 'images/buzzi-vs-shauli/shauli.jpg'
+    imgB_aligned_path = 'images/buzzi-vs-shauli/aligned.jpg'
     print("\nRunning...\n")
 
     """
     Task 1 Code - Blended Image
     """
 
-    # imgB_aligned_path = 'images/buzzi-vs-shauli/aligned.jpg'
-    # mask_path = 'images/buzzi-vs-shauli/mask.jpg'
-    #
-    # imgA_bgr = cv2.imread(imgA_path)
-    # imgB_bgr = cv2.imread(imgB_path)
-    # if imgA_bgr is None or imgB_bgr is None:
-    #     raise FileNotFoundError(
-    #         'Could not load source images for blending pipeline')
-    #
-    # mask = build_face_mask(imgA_bgr)
-    # cv2.imwrite(mask_path, mask * 255)
-    #
-    # imgB_aligned = align_face(imgB_bgr, imgA_bgr)
-    # cv2.imwrite(imgB_aligned_path, imgB_aligned)
-    #
-    # print("\nBlending images...\n")
-    # blended = pyramid_blending(imgA_path, imgB_aligned_path,
-    #                            'images/eyal-vs-buzz/blended_ver3.jpg',
-    #                            mask_path)
-    # plot_triptych(load_image(imgA_path), load_image(imgB_aligned_path),
-    #               blended)
-    # # save the figure
-    # plt.savefig('images/outputs/trio_ver4.jpg')
-    # plt.show()
+    # TODO: Uncomment to run Task 1 - Blended Image
+    mask_path = 'images/buzzi-vs-shauli/mask.jpg'
+
+    imgA_bgr = cv2.imread(imgA_path)
+    imgB_bgr = cv2.imread(imgB_path)
+    if imgA_bgr is None or imgB_bgr is None:
+        raise FileNotFoundError(
+            'Could not load source images for blending pipeline')
+
+    mask = build_face_mask(imgA_bgr)
+    cv2.imwrite(mask_path, mask * 255)
+
+    imgB_aligned = align_face(imgB_bgr, imgA_bgr)
+    cv2.imwrite(imgB_aligned_path, imgB_aligned)
+
+    print("\nBlending images...\n")
+    blended = pyramid_blending(imgA_path, imgB_aligned_path,
+                               'images/eyal-vs-buzz/blended_ver3.jpg',
+                               mask_path)
+    plot_triptych(load_image(imgA_path), load_image(imgB_aligned_path),
+                  blended)
+    # save the figure
+    plt.savefig('images/outputs/trio_ver4.jpg')
+    plt.show()
 
     """ 
     Task 2 Code - Hybrid Image
     """
 
     print("Creating hybrid image...")
-    output_path = 'images/outputs/hybrid_ver1.jpg'
-    hybrid = hybrid_image(imgA_path, imgB_path, output_path,
-                          low_pass_radius=15, high_pass_radius=15)
+    output_path = 'images/outputs/hybrid_ver3.jpg'
+    hybrid_image(imgA_path, imgB_aligned_path, output_path)
 
     print("\nDone ..!")
