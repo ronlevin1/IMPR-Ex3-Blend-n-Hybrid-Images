@@ -36,7 +36,7 @@ def build_face_mask(img, idxs=None, kernel_size=21):
 
 if __name__ == "__main__":
     # Generate and save a face mask for the given image
-    img = cv2.imread('images/buzzi-vs-shauli/buzzi.jpeg')
+    img = cv2.imread('inputs/buzzi-vs-shauli/buzzi.jpeg')
     mask = build_face_mask(img)
 
     # visualize alignment
@@ -50,4 +50,4 @@ if __name__ == "__main__":
     cv2.waitKey(0)          # wait for a key press
     cv2.destroyAllWindows() # close the window
 
-    cv2.imwrite('images/buzzi-vs-shauli/buzzi_mask.jpg', mask * 255)
+    cv2.imwrite('inputs/buzzi-vs-shauli/buzzi_mask.jpg', mask * 255)

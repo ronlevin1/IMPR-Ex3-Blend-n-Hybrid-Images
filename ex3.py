@@ -230,16 +230,16 @@ def max_pyramid_levels(shape):
 
 
 def pyramid_blending(imgA_path, imgB_path, output_path,
-                     mask_path='images/binary_mask.png'):
+                     mask_path='inputs/binary_mask.png'):
     """
-    • Given two images A and B, and a binary mask M
+    • Given two inputs A and B, and a binary mask M
     • Construct Laplacian Pyramids La and Lb
     • Construct a Gaussian Pyramid from mask M - Gm
     • Create a third Laplacian Pyramid Lc where for each level k
         𝐿𝑐(𝑖, 𝑗) = 𝐺𝑚(𝑖, 𝑗)*𝐿𝑎(𝑖, 𝑗) + (1 − 𝐺𝑚(𝑖, 𝑗))*𝐿𝑏(𝑖, 𝑗)
     • Sum all levels Lc in to get the blended image
     """
-    # load images and mask
+    # load inputs and mask
     imgA = load_image(imgA_path)
     imgB = load_image(imgB_path)
     mask = load_image(mask_path, as_gray=True)
@@ -257,7 +257,7 @@ def pyramid_blending(imgA_path, imgB_path, output_path,
                      max_pyramid_levels(imgB.shape),
                      max_pyramid_levels(mask.shape))
 
-    # create pyramids for images & mask
+    # create pyramids for inputs & mask
     La = laplacian_pyramid(imgA, num_levels)
     Lb = laplacian_pyramid(imgB, num_levels)
     Gm = gaussian_pyramid(mask, num_levels)
@@ -346,7 +346,7 @@ def plot_pyramid_levels(Lc, blended_img, num_levels):
 
     plt.subplots_adjust(wspace=0.06, hspace=0.1)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
-    plt.savefig('images/report/blended_gaussian_pyr.jpg')
+    plt.savefig('inputs/report/blended_gaussian_pyr.jpg')
     plt.close()
 
     # save Laplacian pyramid (Lc) levels
@@ -363,7 +363,7 @@ def plot_pyramid_levels(Lc, blended_img, num_levels):
     # plt.tight_layout()
     plt.subplots_adjust(wspace=0.06, hspace=0.1)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
-    plt.savefig('images/report/blended_laplacian_pyr.jpg')
+    plt.savefig('inputs/report/blended_laplacian_pyr.jpg')
     plt.close()
 
 
@@ -430,7 +430,7 @@ def hybrid_image(imgA_path, imgB_path, output_path, gray_scale=False):
     LOW_SIGMA_RATIO = 0.02
     HIGH_SIGMA_RATIO = 0.005
 
-    # load images
+    # load inputs
     if gray_scale:
         A = cv2.imread(imgA_path, cv2.IMREAD_GRAYSCALE) / 255.0
         B = cv2.imread(imgB_path, cv2.IMREAD_GRAYSCALE) / 255.0
@@ -438,7 +438,7 @@ def hybrid_image(imgA_path, imgB_path, output_path, gray_scale=False):
         A = load_image(imgA_path)
         B = load_image(imgB_path)
 
-    # match images size
+    # match inputs size
     hA, wA = A.shape[:2]
     hB, wB = B.shape[:2]
     target_h = min(hA, hB)
@@ -476,16 +476,16 @@ def hybrid_image(imgA_path, imgB_path, output_path, gray_scale=False):
 
 if __name__ == '__main__':
     # GOOD BLENDING PATHS
-    imgA_path = 'images/buzzi-vs-eyal/buzzi.jpeg'
-    imgB_path = 'images/buzzi-vs-eyal/bibi.jpg'
-    imgB_aligned_path = 'images/buzzi-vs-eyal/aligned.jpg'
-    mask_path = 'images/buzzi-vs-eyal/mask.jpg'
+    imgA_path = 'inputs/buzzi-vs-bibi/buzzi.jpeg'
+    imgB_path = 'inputs/buzzi-vs-bibi/bibi.jpg'
+    imgB_aligned_path = 'inputs/buzzi-vs-bibi/aligned.jpg'
+    mask_path = 'inputs/buzzi-vs-bibi/mask.jpg'
 
     # BAD BLENDING PATHS
-    # imgA_path = 'images/eyal-vs-buzz/eyal.jpg'
-    # imgB_path = 'images/eyal-vs-buzz/bazz.jpg'
-    # imgB_aligned_path = 'images/eyal-vs-buzz/aligned.jpg'
-    # mask_path = 'images/eyal-vs-buzz/mask.jpg'
+    # imgA_path = 'inputs/eyal-vs-buzz/eyal.jpg'
+    # imgB_path = 'inputs/eyal-vs-buzz/bazz.jpg'
+    # imgB_aligned_path = 'inputs/eyal-vs-buzz/aligned.jpg'
+    # mask_path = 'inputs/eyal-vs-buzz/mask.jpg'
 
     print("\nRunning...\n")
 
@@ -493,7 +493,7 @@ if __name__ == '__main__':
     imgB_bgr = cv2.imread(imgB_path)
     if imgA_bgr is None or imgB_bgr is None:
         raise FileNotFoundError(
-            'Could not load source images for blending pipeline')
+            'Could not load source inputs for blending pipeline')
 
     # -------------------------- Task 1 Execution ----------------------------
 
@@ -506,22 +506,25 @@ if __name__ == '__main__':
     cv2.imwrite(imgB_aligned_path, imgB_aligned)
 
     # execute blending
-    print("\nBlending images...\n")
+    print("\nBlending inputs...\n")
     blended = pyramid_blending(imgA_path, imgB_aligned_path,
-                               'images/eyal-vs-buzz/blended_ver3.jpg',
+                               'inputs/eyal-vs-buzz/blended_ver3.jpg',
                                mask_path)
     plot_triptych(load_image(imgA_path), load_image(imgB_aligned_path),
                   blended)
-    # plot_fft_magnitude(blended, 'images/report/blended_fft_magnitude.jpg')
+    # plot_fft_magnitude(blended, 'inputs/report/blended_fft_magnitude.jpg')
 
     # save figure
-    # plt.savefig('images/outputs/trio_ver4.jpg')
+    # plt.savefig('inputs/outputs/trio_ver4.jpg')
     # plt.show()
 
     # -------------------------- Task 2 Execution ----------------------------
 
     # print("Creating hybrid image...")
-    # output_path = 'images/outputs/hybrid_ver3.jpg'
+    # output_path = 'inputs/outputs/hybrid_ver3.jpg'
     # hybrid_image(imgA_path, imgB_aligned_path, output_path)
 
     print("\nDone ..!")
+
+    # TODO: create a tar file you can run the following command:
+    # tar -cvf ex3.tar ex3.py requirements.txt ./inputs ./outputs
