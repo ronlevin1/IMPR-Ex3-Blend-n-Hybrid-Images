@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cv2
 import mediapipe as mp
-# from create_mask import build_face_mask
+from scipy.ndimage import convolve1d
 
 "------------------------------------------------------------------------------"
 "----------- Helper functions from face_align.py and create_mask.py -----------"
@@ -111,20 +111,23 @@ EXPAND_KERNEL = GAUSSIAN_KERNEL / (GAUSSIAN_KERNEL.sum() / 2.0)
 
 
 def _blur_single_channel(img, kernel):
-    # TODO: is there a more efficient way to do the blurring with numpy built in functionality?
-    pad = len(kernel) // 2
-    temp = np.zeros_like(img, dtype=np.float64)
-
-    row_padded = np.pad(img, ((0, 0), (pad, pad)), mode='edge')
-    for i in range(img.shape[0]):
-        temp[i, :] = np.convolve(row_padded[i], kernel, mode='valid')
-
-    col_padded = np.pad(temp, ((pad, pad), (0, 0)), mode='edge')
-    blurred = np.zeros_like(img, dtype=np.float64)
-    for j in range(img.shape[1]):
-        blurred[:, j] = np.convolve(col_padded[:, j], kernel, mode='valid')
-
+    # TODO: check results with new implementation
+    temp = convolve1d(img, kernel, axis=1, mode='nearest')
+    blurred = convolve1d(temp, kernel, axis=0, mode='nearest')
     return blurred
+    # pad = len(kernel) // 2
+    # temp = np.zeros_like(img, dtype=np.float64)
+    #
+    # row_padded = np.pad(img, ((0, 0), (pad, pad)), mode='edge')
+    # for i in range(img.shape[0]):
+    #     temp[i, :] = np.convolve(row_padded[i], kernel, mode='valid')
+    #
+    # col_padded = np.pad(temp, ((pad, pad), (0, 0)), mode='edge')
+    # blurred = np.zeros_like(img, dtype=np.float64)
+    # for j in range(img.shape[1]):
+    #     blurred[:, j] = np.convolve(col_padded[:, j], kernel, mode='valid')
+    #
+    # return blurred
 
 
 def blur(img, kernel):
@@ -198,6 +201,7 @@ def load_image(img_path, as_gray=False):
 
 
 def plot_triptych(imgA, imgB, blended, titles=None, figsize=(12, 4)):
+    # TODO: decrease horizontal space between subplots
     if titles is None:
         titles = ("Buzzi", "Shauli (Aligned)", "Blended")
     fig, axes = plt.subplots(1, 3, figsize=figsize)
@@ -274,9 +278,127 @@ def pyramid_blending(imgA_path, imgB_path, output_path,
             blended_img = blended_img[:target_height, :target_width, ...]
         blended_img += Lc[k]
 
+    # plot_pyramid_levels(Lc, blended_img, num_levels)
     blended_img = np.clip(blended_img, 0.0, 1.0)
     plt.imsave(output_path, blended_img)
     return blended_img
+
+
+def plot_pyramid_levels(Lc, blended_img, num_levels):
+    # TODO: delete this function before submission
+    """
+    for the report - section 4:
+    create gaussian pyramid for blended image and with Lc (laplacian pyr)
+    save as figures showing 8 levels in the pyramid, in 2 rows of 4 levels,
+    positioned side-by-side. choose 8 levels from the middle of the pyramid.
+    """
+
+    def _select_middle_levels(pyr, count=8):
+        total = len(pyr)
+        if total >= count:
+            start = max(0, (total - count) // 2)
+            return pyr[start:start + count]
+        # pad by repeating last level if not enough levels
+        selected = list(pyr)
+        while len(selected) < count:
+            selected.append(pyr[-1])
+        return selected
+
+    def _to_display(img):
+        img = np.asarray(img, dtype=np.float64)
+        mn, mx = img.min(), img.max()
+        # If the image is already in normalised [0,1] range just clip and return it.
+        # This preserves correct appearance for Gaussian pyramid levels (G), avoiding
+        # unnecessary contrast stretching that makes G[0] look almost white.
+        if mn >= 0.0 and mx <= 1.0:
+            return np.clip(img, 0.0, 1.0)
+
+        # If dynamic range is effectively zero, center and amplify tiny variations.
+        if mx - mn < 1e-12:
+            centered = img - img.mean()
+            s = np.abs(centered).max()
+            if s < 1e-12:
+                return np.zeros_like(img)  # truly constant
+            centered /= (2 * s)
+            return np.clip(centered + 0.5, 0.0, 1.0)
+
+        # Otherwise scale to [0,1] (useful for Laplacian levels with negatives).
+        return np.clip((img - mn) / (mx - mn), 0.0, 1.0)
+
+    G_blended = gaussian_pyramid(blended_img, num_levels)
+    # pick levels
+    # G_levels = _select_middle_levels(G_blended, 8)
+    # Lc_levels = _select_middle_levels(Lc, 8)
+    G_levels = G_blended[3:7]
+    Lc_levels = Lc[3:7]
+
+    # save Gaussian pyramid of blended image
+    plt.figure(figsize=(12, 6))
+    for i, lvl in enumerate(G_levels):
+        ax = plt.subplot(1, 4, i + 1)
+        disp = lvl
+        if disp.ndim == 2:
+            ax.imshow(disp, cmap='gray')
+        else:
+            ax.imshow(disp)
+        ax.set_title(f'G level {i + 1}')
+        ax.axis('off')
+
+    plt.subplots_adjust(wspace=0.06, hspace=0.1)
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.savefig('images/report/blended_gaussian_pyr.jpg')
+    plt.close()
+
+    # save Laplacian pyramid (Lc) levels
+    plt.figure(figsize=(12, 6))
+    for i, lvl in enumerate(Lc_levels):
+        ax = plt.subplot(1, 4, i + 1)
+        disp = _to_display(lvl)
+        if disp.ndim == 2:
+            ax.imshow(disp, cmap='gray')
+        else:
+            ax.imshow(np.clip(disp, 0.0, 1.0))
+        ax.set_title(f'L level {i + 1}')
+        ax.axis('off')
+    # plt.tight_layout()
+    plt.subplots_adjust(wspace=0.06, hspace=0.1)
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.savefig('images/report/blended_laplacian_pyr.jpg')
+    plt.close()
+
+
+def plot_fft_magnitude(image, out_path):
+    """Compute log-magnitude of 2D FFT of image luminance and save as uint8 image."""
+    img = np.array(image, dtype=np.float64, copy=False)
+    if img.ndim == 3 and img.shape[2] >= 3:
+        gray = np.dot(img[..., :3], [0.299, 0.587, 0.114])
+    else:
+        gray = img if img.ndim == 2 else img[..., 0]
+    # ensure numeric range suitable for FFT
+    if gray.max() > 1.0:
+        gray = gray / 255.0
+    gray = np.clip(gray, 0.0, 1.0)
+
+    F = np.fft.fft2(gray)
+    Fshift = np.fft.fftshift(F)
+    magnitude = np.log1p(np.abs(Fshift))
+
+    # normalize to [0,1]
+    if magnitude.max() > 0:
+        magnitude = magnitude / magnitude.max()
+    else:
+        magnitude = np.zeros_like(magnitude)
+
+    out_uint8 = (magnitude * 255.0).round().astype(np.uint8)
+
+    # render with matplotlib to add a title (use vmin/vmax to avoid autoscaling)
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.imshow(out_uint8, cmap='gray', vmin=0, vmax=255)
+    ax.set_title('Buzzi vs. Bibi FFT Magnitude (log scale)')
+    ax.axis('off')
+    plt.tight_layout()
+    fig.savefig(out_path)
+    plt.close(fig)
 
 
 "------------------------------------------------------------------------------"
@@ -351,16 +473,21 @@ def hybrid_image(imgA_path, imgB_path, output_path, gray_scale=False):
 "-----------------------------------------------------------------------------"
 "------------------------------ Main Execution -------------------------------"
 "-----------------------------------------------------------------------------"
+
 if __name__ == '__main__':
-    # TODO: integrate face_align module to align images before blending
-
+    # GOOD BLENDING PATHS
     imgA_path = 'images/buzzi-vs-eyal/buzzi.jpeg'
-    imgB_path = 'images/buzzi-vs-shauli/shauli.jpg'
-    imgB_aligned_path = 'images/buzzi-vs-shauli/aligned.jpg'
-    print("\nRunning...\n")
+    imgB_path = 'images/buzzi-vs-eyal/bibi.jpg'
+    imgB_aligned_path = 'images/buzzi-vs-eyal/aligned.jpg'
+    mask_path = 'images/buzzi-vs-eyal/mask.jpg'
 
-    # -------------------------- Task 1 Execution ----------------------------
-    mask_path = 'images/buzzi-vs-shauli/mask.jpg'
+    # BAD BLENDING PATHS
+    # imgA_path = 'images/eyal-vs-buzz/eyal.jpg'
+    # imgB_path = 'images/eyal-vs-buzz/bazz.jpg'
+    # imgB_aligned_path = 'images/eyal-vs-buzz/aligned.jpg'
+    # mask_path = 'images/eyal-vs-buzz/mask.jpg'
+
+    print("\nRunning...\n")
 
     imgA_bgr = cv2.imread(imgA_path)
     imgB_bgr = cv2.imread(imgB_path)
@@ -368,25 +495,33 @@ if __name__ == '__main__':
         raise FileNotFoundError(
             'Could not load source images for blending pipeline')
 
+    # -------------------------- Task 1 Execution ----------------------------
+
+    # create mask
     mask = build_face_mask(imgA_bgr)
     cv2.imwrite(mask_path, mask * 255)
 
+    # align imgB to imgA
     imgB_aligned = align_face(imgB_bgr, imgA_bgr)
     cv2.imwrite(imgB_aligned_path, imgB_aligned)
 
+    # execute blending
     print("\nBlending images...\n")
     blended = pyramid_blending(imgA_path, imgB_aligned_path,
                                'images/eyal-vs-buzz/blended_ver3.jpg',
                                mask_path)
     plot_triptych(load_image(imgA_path), load_image(imgB_aligned_path),
                   blended)
+    # plot_fft_magnitude(blended, 'images/report/blended_fft_magnitude.jpg')
+
     # save figure
-    plt.savefig('images/outputs/trio_ver4.jpg')
-    plt.show()
+    # plt.savefig('images/outputs/trio_ver4.jpg')
+    # plt.show()
 
     # -------------------------- Task 2 Execution ----------------------------
-    print("Creating hybrid image...")
-    output_path = 'images/outputs/hybrid_ver3.jpg'
-    hybrid_image(imgA_path, imgB_aligned_path, output_path)
+
+    # print("Creating hybrid image...")
+    # output_path = 'images/outputs/hybrid_ver3.jpg'
+    # hybrid_image(imgA_path, imgB_aligned_path, output_path)
 
     print("\nDone ..!")
