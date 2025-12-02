@@ -1,8 +1,104 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
-from create_mask import build_face_mask
-from face_align import align_face, flip_lr
+import mediapipe as mp
+# from create_mask import build_face_mask
+
+"------------------------------------------------------------------------------"
+"----------- Helper functions from face_align.py and create_mask.py -----------"
+"------------------------------------------------------------------------------"
+
+mp_face = mp.solutions.face_mesh
+FACE_OVAL_IDX = [
+    10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288,
+    397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
+    172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109
+]
+
+
+def build_face_mask(img, idxs=None, kernel_size=21):
+    if idxs is None:
+        idxs = FACE_OVAL_IDX
+
+    h, w = img.shape[:2]
+    with mp_face.FaceMesh(static_image_mode=True, max_num_faces=1,
+                          refine_landmarks=True) as face_mesh:
+        res = face_mesh.process(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        if not res.multi_face_landmarks:
+            raise RuntimeError("No face detected")
+        lm = res.multi_face_landmarks[0].landmark
+        pts = np.array([[lm[i].x * w, lm[i].y * h] for i in idxs],
+                       dtype=np.int32)
+
+    pts = cv2.convexHull(pts)
+
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.fillPoly(mask, [pts], 1)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,
+                                       (kernel_size, kernel_size))
+    mask = cv2.dilate(mask, kernel)
+    mask = (mask > 0).astype(np.uint8)
+
+    return 1 - mask
+
+
+def get_landmarks(img):
+    with mp_face.FaceMesh(static_image_mode=True,
+                          max_num_faces=1,
+                          refine_landmarks=True) as face_mesh:
+        h, w = img.shape[:2]
+        results = face_mesh.process(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        if not results.multi_face_landmarks:
+            raise RuntimeError("No face detected")
+        lm = results.multi_face_landmarks[0].landmark
+        pts = np.array([[p.x * w, p.y * h] for p in lm], dtype=np.float32)
+        return pts
+
+
+def get_affine_keypoints(landmarks):
+    # use: left eye outer corner, right eye outer corner, tip of nose
+    idx_left_eye = 33
+    idx_right_eye = 263
+    idx_nose = 1
+    return np.stack([
+        landmarks[idx_left_eye],
+        landmarks[idx_right_eye],
+        landmarks[idx_nose],
+    ], axis=0)
+
+
+def get_shape_keypoints(landmarks, idxs=FACE_OVAL_IDX):
+    return np.asarray(landmarks[idxs], dtype=np.float32)
+
+
+def align_face(src_img, dst_img):
+    """Align src_img to dst_img using facial landmarks."""
+    src_landmarks = get_landmarks(src_img)
+    dst_landmarks = get_landmarks(dst_img)
+
+    src_shape = get_shape_keypoints(src_landmarks)
+    dst_shape = get_shape_keypoints(dst_landmarks)
+
+    M, _ = cv2.estimateAffinePartial2D(src_shape, dst_shape, method=cv2.LMEDS)
+
+    if M is None:
+        src_pts = get_affine_keypoints(src_landmarks)
+        dst_pts = get_affine_keypoints(dst_landmarks)
+        M = cv2.getAffineTransform(src_pts, dst_pts)
+
+    h, w = dst_img.shape[:2]
+    aligned = cv2.warpAffine(src_img, M, (w, h),
+                             flags=cv2.INTER_LINEAR,
+                             borderMode=cv2.BORDER_REFLECT_101)
+    return aligned
+
+
+def flip_lr(img):
+    return cv2.flip(img, 1)
+
+
+"------------------------------------------------------------------------------"
 
 GAUSSIAN_VECTOR = [1, 4, 6, 4, 1]
 GAUSSIAN_KERNEL = np.array(GAUSSIAN_VECTOR, dtype=np.float64)
@@ -212,7 +308,7 @@ def hybrid_image(imgA_path, imgB_path, output_path, gray_scale=False):
     LOW_SIGMA_RATIO = 0.02
     HIGH_SIGMA_RATIO = 0.005
 
-    # load images (color)
+    # load images
     if gray_scale:
         A = cv2.imread(imgA_path, cv2.IMREAD_GRAYSCALE) / 255.0
         B = cv2.imread(imgB_path, cv2.IMREAD_GRAYSCALE) / 255.0
@@ -244,10 +340,10 @@ def hybrid_image(imgA_path, imgB_path, output_path, gray_scale=False):
 
     # display and save
     plt.figure(figsize=(8, 8))
-    plt.imshow(hybrid, cmap='gray')
+    plt.imshow(hybrid, cmap='gray' if gray_scale else None)
     plt.axis('off')
     plt.show()
-    plt.imsave(output_path, hybrid, cmap='gray')
+    plt.imsave(output_path, hybrid, cmap='gray' if gray_scale else None)
 
     return hybrid
 
