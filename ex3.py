@@ -15,6 +15,7 @@ EXPAND_KERNEL = GAUSSIAN_KERNEL / (GAUSSIAN_KERNEL.sum() / 2.0)
 
 
 def _blur_single_channel(img, kernel):
+    # TODO: is there a more efficient way to do the blurring with numpy built in functionality?
     pad = len(kernel) // 2
     temp = np.zeros_like(img, dtype=np.float64)
 
@@ -59,12 +60,14 @@ def gaussian_pyramid(img, num_of_levels):
     """Construct a Gaussian pyramid from the input image."""
     pyramid = [img]
     current_img = img
+
     for _ in range(1, num_of_levels):
         if min(current_img.shape[:2]) < 2:
             break
         reduced_img = reduce(current_img)
         pyramid.append(reduced_img)
         current_img = reduced_img
+
     return pyramid
 
 
@@ -72,6 +75,7 @@ def laplacian_pyramid(img, num_of_levels):
     """Construct a Laplacian pyramid from the input image."""
     gaussian_pyr = gaussian_pyramid(img, num_of_levels)
     laplacian_pyr = []
+
     for i in range(len(gaussian_pyr) - 1):
         expanded = expand(gaussian_pyr[i + 1])
         # Ensure the expanded image matches the size of the current Gaussian level
@@ -79,8 +83,10 @@ def laplacian_pyramid(img, num_of_levels):
             target_height, target_width = gaussian_pyr[i].shape[:2]
             expanded = expanded[:target_height, :target_width, ...]
         laplacian_pyr.append(gaussian_pyr[i] - expanded)
+
     # last level is the same as in Gaussian pyramid
     laplacian_pyr.append(gaussian_pyr[-1])
+
     return laplacian_pyr
 
 
@@ -151,6 +157,7 @@ def pyramid_blending(imgA_path, imgB_path, output_path,
                      max_pyramid_levels(imgB.shape),
                      max_pyramid_levels(mask.shape))
 
+    # create pyramids for images & mask
     La = laplacian_pyramid(imgA, num_levels)
     Lb = laplacian_pyramid(imgB, num_levels)
     Gm = gaussian_pyramid(mask, num_levels)
@@ -165,7 +172,7 @@ def pyramid_blending(imgA_path, imgB_path, output_path,
     blended_img = Lc[-1]
     for k in range(num_levels - 2, -1, -1):
         blended_img = expand(blended_img)
-        # Ensure the expanded image matches the size of the current Lc level
+        # Ensure expanded image matches the size of current Lc level
         if blended_img.shape != Lc[k].shape:
             target_height, target_width = Lc[k].shape[:2]
             blended_img = blended_img[:target_height, :target_width, ...]
@@ -256,11 +263,7 @@ if __name__ == '__main__':
     imgB_aligned_path = 'images/buzzi-vs-shauli/aligned.jpg'
     print("\nRunning...\n")
 
-    """
-    Task 1 Code - Blended Image
-    """
-
-    # TODO: Uncomment to run Task 1 - Blended Image
+    # -------------------------- Task 1 Execution ----------------------------
     mask_path = 'images/buzzi-vs-shauli/mask.jpg'
 
     imgA_bgr = cv2.imread(imgA_path)
@@ -281,14 +284,11 @@ if __name__ == '__main__':
                                mask_path)
     plot_triptych(load_image(imgA_path), load_image(imgB_aligned_path),
                   blended)
-    # save the figure
+    # save figure
     plt.savefig('images/outputs/trio_ver4.jpg')
     plt.show()
 
-    """ 
-    Task 2 Code - Hybrid Image
-    """
-
+    # -------------------------- Task 2 Execution ----------------------------
     print("Creating hybrid image...")
     output_path = 'images/outputs/hybrid_ver3.jpg'
     hybrid_image(imgA_path, imgB_aligned_path, output_path)
